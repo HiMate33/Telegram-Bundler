@@ -1,4 +1,4 @@
-const { User } = require("./models/userModel");
+const { User } = require("../models/userModel");
 const bs58 = require("bs58");
 const { Keypair } = require("@solana/web3.js");
 
@@ -36,7 +36,7 @@ module.exports = (bot) => {
       return bot.sendMessage(
         chatId,
         `🎉 <b>Wallet created successfully!</b>\n\n<b>Public Key:</b>\n<code>${publicKey}</code>\n\n<b>Private Key (Save this!):</b>\n<code>${privateKey}</code>`,
-        { parse_mode: "HTML" }
+        { parse_mode: "HTML" } // Use backticks for template literals
       );
     }
 
@@ -68,8 +68,8 @@ module.exports = (bot) => {
 
         return bot.sendMessage(
           chatId,
-          `🎉 <b>Wallet imported successfully!</b>\n\n<b>Public Key:</b>\n<code>${publicKey}</code>\n\n<b>Private Key (Save this!):</b>\n<code>${text}</code>`,
-          { parse_mode: "HTML" }
+          `✅ <b>Wallet imported successfully!</b>\n\n<b>Public Key:</b>\n<code>${publicKey}</code>\n\n<b>Private Key (Save this!):</b>\n<code>${text}</code>`,
+          { parse_mode: "HTML" } // Corrected to template literal and HTML tags
         );
       } catch (error) {
         return bot.sendMessage(chatId, "❌ Invalid private key format. Please try again.");
