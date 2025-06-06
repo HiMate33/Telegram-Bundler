@@ -12,12 +12,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@metaplex-foundation/umi-uploader-irys": "^1.2.0",
     "@solana/web3.js": "^1.98.2",
     "axios": "^1.9.0",
     "bs58": "^4.0.1",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "mongoose": "^8.5.1",
+    "node-cron": "^4.1.0",
     "node-telegram-bot-api": "^0.66.0"
   },
   "devDependencies": {

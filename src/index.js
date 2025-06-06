@@ -1,79 +1,42 @@
-const { User } = require("./models/userModel");
-const bs58 = require("bs58");
-const { Keypair } = require("@solana/web3.js");
+require("dotenv").config();
+const express = require("express");
+const TelegramBot = require("node-telegram-bot-api");
+const connectDB = require("./config/db");
+const startHandler = require("./bot/start");
 
-const userState = {};
+// Ensure BOT_TOKEN is defined
+if (!process.env.BOT_TOKEN) {
+  console.error("FATAL ERROR: BOT_TOKEN is not defined in .env file.");
+  process.exit(1);
+}
 
-module.exports = (bot) => {
-  bot.on("callback_query", async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const action = callbackQuery.data;
-    const telegramId = callbackQuery.from.id;
+async function startApp() {
+  try {
+    // Connect to Database and wait for it to complete
+    await connectDB();
+    // If connectDB was successful and didn't exit, we can log success here
+    // (The log in db.js might be commented out or you might prefer it here)
+    console.log("✅ MongoDB connected successfully (verified in index.js).");
 
-    if (action === "set_treasury_wallet") {
-      const options = {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🆕 Create New Wallet", callback_data: "create_wallet" }],
-            [{ text: "📥 Import Wallet (Private Key)", callback_data: "import_wallet" }],
-          ],
-        },
-      };
-      return bot.sendMessage(chatId, "🔐 Choose a wallet option:", options);
-    }
+    const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+    console.log("🤖 Bot started polling..."); // Add log for bot polling
+    const app = express();
 
-    if (action === "create_wallet") {
-      const keypair = Keypair.generate();
-      const publicKey = keypair.publicKey.toString();
-      const privateKey = bs58.encode(keypair.secretKey);
+    // Register handlers
+    startHandler(bot);
+    require("./handlers/index")(bot);
 
-      await User.findOneAndUpdate(
-        { telegram_id: telegramId },
-        { wallet: { publicKey, privateKey } },
-        { upsert: true }
-      );
+    app.use(express.json());
 
-      return bot.sendMessage(
-        chatId,
-        `🎉 <b>Wallet created successfully!</b>\n\n<b>Public Key:</b>\n<code>${publicKey}</code>\n\n<b>Private Key (Save this!):</b>\n<code>${privateKey}</code>`,
-        { parse_mode: "HTML" }
-      );
-    }
+    const PORT = process.env.PORT || 3000; // Define PORT once
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
 
-    if (action === "import_wallet") {
-      userState[telegramId] = "awaiting_private_key";
-      return bot.sendMessage(chatId, "🔑 Please send your private key to import your wallet:");
-    }
+  } catch (error) {
+    console.error("❌ Failed to start the application:", error);
+    process.exit(1);
+  }
+}
 
-    bot.answerCallbackQuery(callbackQuery.id);
-  });
-
-  bot.on("message", async (msg) => {
-    const chatId = msg.chat.id;
-    const telegramId = msg.from.id;
-    const text = msg.text.trim();
-
-    if (userState[telegramId] === "awaiting_private_key") {
-      try {
-        const decodedKey = bs58.decode(text);
-        const publicKey = Keypair.fromSecretKey(decodedKey).publicKey.toString();
-
-        await User.findOneAndUpdate(
-          { telegram_id: telegramId },
-          { wallet: { publicKey, privateKey: text } },
-          { upsert: true }
-        );
-
-        delete userState[telegramId];
-
-        return bot.sendMessage(
-          chatId,
-          `🎉 <b>Wallet imported successfully!</b>\n\n<b>Public Key:</b>\n<code>${publicKey}</code>\n\n<b>Private Key (Save this!):</b>\n<code>${text}</code>`,
-          { parse_mode: "HTML" }
-        );
-      } catch (error) {
-        return bot.sendMessage(chatId, "❌ Invalid private key format. Please try again.");
-      }
-    }
-  });
-};
+startApp();
