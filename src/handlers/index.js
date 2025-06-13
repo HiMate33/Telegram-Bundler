@@ -23,7 +23,6 @@ module.exports = (bot) => {
     const action = callbackQuery.data;
     const telegramId = callbackQuery.from.id;
 
-    // Handle wallet actions
     if (
       action === "main_wallet" ||
       action === "create_wallet" ||
@@ -36,7 +35,6 @@ module.exports = (bot) => {
 }
 
 
-    // ✅ Handle "bundled_network" action
     if (action === "bundled_network") {
       return networkHandler(bot, callbackQuery);
     }
@@ -44,7 +42,6 @@ if (action === "account_info") {
   return accountInfoHandler(bot, callbackQuery);
 }
 
-    // Inside bot.on("callback_query", async (callbackQuery) => {
 if (action.startsWith("bundle_create_")) {
   const count = parseInt(action.split("_")[2], 10);
   return handleBundleCreate(bot, telegramId, chatId, count);
@@ -52,13 +49,6 @@ if (action.startsWith("bundle_create_")) {
 // => CREATE TOKEN HANDLER
 if (action === "create_token") {
  return handleCreateToken(bot, callbackQuery)
-}
-if (action === "confirm_create_token") {
-  return handleCreateToken.handleConfirm(bot, callbackQuery);
-}
-
-if (action === "cancel_token_creation") {
-  return handleCreateToken.handleCancel(bot, callbackQuery);
 }
 //
 
@@ -68,7 +58,6 @@ if (action.startsWith("bundle_import_")) {
 }
 
 
-    // ✅ Handle selecting an RPC provider
     if (action.startsWith("rpc_")) {
       const index = parseInt(action.split("_")[1], 10);
       const selectedRPC = rpcProviders[index];
