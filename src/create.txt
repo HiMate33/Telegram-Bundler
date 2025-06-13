@@ -1,0 +1,108 @@
+const {
+  createFungible,
+  mplTokenMetadata,
+} = require("@metaplex-foundation/mpl-token-metadata");
+const {
+  createTokenIfMissing,
+  findAssociatedTokenPda,
+  getSplAssociatedTokenProgramId,
+  mintTokensTo,
+} = require("@metaplex-foundation/mpl-toolbox");
+const {
+  createGenericFile,
+  percentAmount,
+  signerIdentity,
+  sol,
+  createSignerFromKeypair,
+  KeypairSigner,
+  generateSigner,
+} = require("@metaplex-foundation/umi");
+const { createUmi } = require("@metaplex-foundation/umi-bundle-defaults");
+const { irysUploader } = require("@metaplex-foundation/umi-uploader-irys");
+const { base58 } = require("@metaplex-foundation/umi/serializers");
+const fs = require("fs");
+const bs58 = require("bs58");
+
+require("dotenv").config;
+
+const PRIVATE_KEY_STRING = process.env.SOLANA_PRIVATE_KEY;
+
+const createAndMintTokens = async () => {
+  const umi = createUmi(
+    "https://devnet-aura.metaplex.com/af9b1c0f-96b6-4f65-bfb3-118b3cd3b538"
+  )
+    .use(mplTokenMetadata())
+    .use(irysUploader());
+
+  const secretKeyBytes = bs58.decode(PRIVATE_KEY_STRING);
+  const keypair = umi.eddsa.createKeypairFromSecretKey(secretKeyBytes);
+  const signer = createSignerFromKeypair(umi, keypair);
+  //const signer = generateSigner(umi);
+  umi.use(signerIdentity(signer));
+
+  const imageBuffer = fs.readFileSync("./bfr.jpg");
+  const umiImageFile = createGenericFile(imageBuffer, "image.png", {
+    tags: [{ name: "Content-Type", value: "image/png" }],
+  });
+
+  console.log("Uploading image to Arweave via Irys...");
+  const imageUri = await umi.uploader.upload([umiImageFile]);
+  console.log("Image URI:", imageUri[0]);
+
+  const metadata = {
+    name: "Zeus Token",
+    symbol: "$Zeus",
+    description: "Zeus token is here for the metavers token",
+    image: imageUri[0],
+  };
+
+  console.log("Uploading metadata to Arweave...");
+  const metadataUri = await umi.uploader.uploadJson(metadata);
+  console.log("Metadata URI:", metadataUri);
+
+  const mintKepair = umi.eddsa.generateKeypair();
+  const mintSigner = createSignerFromKeypair(umi, mintKepair);
+
+  const createFungibleIx = createFungible(umi, {
+    mint: mintSigner,
+    name: metadata.name,
+    symbol: metadata.symbol,
+    uri: metadataUri,
+    sellerFeeBasisPoints: percentAmount(0),
+    decimals: 9,
+  });
+
+  const createTokenIx = createTokenIfMissing(umi, {
+    mint: mintSigner.publicKey,
+    owner: umi.identity.publicKey,
+    ataProgram: getSplAssociatedTokenProgramId(umi),
+  });
+
+  const mintTokensIx = mintTokensTo(umi, {
+    mint: mintSigner.publicKey,
+    token: findAssociatedTokenPda(umi, {
+      mint: mintSigner.publicKey,
+      owner: umi.identity.publicKey,
+    }),
+    amount: BigInt(100_000_000) * BigInt(10 ** 9),
+
+    //amount: BigInt(1000),
+  });
+
+  console.log("Sending transaction...");
+  const tx = await createFungibleIx
+    .add(createTokenIx)
+    .add(mintTokensIx)
+    .sendAndConfirm(umi);
+
+  const signature = base58.deserialize(tx.signature)[0];
+  console.log("\n✅ Transaction Complete");
+  console.log(
+    🔗 View Transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet
+  );
+  console.log(
+    🔗 View Token Mint: https://explorer.solana.com/address/${mintSigner.publicKey}?cluster=devnet
+  );
+};
+
+createAndMintTokens(); 
