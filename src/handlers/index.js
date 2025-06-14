@@ -7,6 +7,8 @@ const handleBundleCreate = require("./bundleCreate");
 const handleBundleImport = require("./bundleImport");
 const accountInfoHandler = require("./accountInfo");
 const handleCreateToken = require("./createToken");
+const buyTokenHandler = require("./buyToken");
+
 
 
 
@@ -50,7 +52,18 @@ if (action.startsWith("bundle_create_")) {
 if (action === "create_token") {
  return handleCreateToken(bot, callbackQuery)
 }
-//
+// => BUY TOKEN HANDLER 
+if  (action === "buy_token") {
+  return buyTokenHandler(bot, callbackQuery);
+}
+
+if (action.startsWith("confirm_buy_token_")) {
+  const [, , tokenMint, amount] = action.split("_");
+  // Call your buy logic here (e.g., performBuy(bot, callbackQuery, tokenMint, amount))
+  // For now, just acknowledge:
+  await bot.sendMessage(chatId, `You confirmed buying ${amount} of token ${tokenMint}.`);
+  return;
+}
 
 if (action.startsWith("bundle_import_")) {
   const count = parseInt(action.split("_")[2], 10);
