@@ -48,21 +48,18 @@ if (action.startsWith("bundle_create_")) {
   const count = parseInt(action.split("_")[2], 10);
   return handleBundleCreate(bot, telegramId, chatId, count);
 }
-// => CREATE TOKEN HANDLER
 if (action === "create_token") {
  return handleCreateToken(bot, callbackQuery)
 }
-// => BUY TOKEN HANDLER 
-if  (action === "buy_token") {
+if (action.startsWith("confirm_buy_token_") || action === "buy_token") {
   return buyTokenHandler(bot, callbackQuery);
 }
 
 if (action.startsWith("confirm_buy_token_")) {
   const [, , tokenMint, amount] = action.split("_");
-  // Call your buy logic here (e.g., performBuy(bot, callbackQuery, tokenMint, amount))
-  // For now, just acknowledge:
+ 
   await bot.sendMessage(chatId, `You confirmed buying ${amount} of token ${tokenMint}.`);
-  return;
+   return;
 }
 
 if (action.startsWith("bundle_import_")) {
