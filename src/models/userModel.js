@@ -25,17 +25,34 @@ const userSchema = new mongoose.Schema({
   },
 ],
 bundled_wallet_buy_amount: [Number],
-
-
-
-  
    
   rpc_provider: {
   name: { type: String, default: "Mainnet Beta" },
   url: { type: String, default: "https://api.mainnet-beta.solana.com" },
 },
 
+volume_tracking: {
+    enabled: { type: Boolean, default: true },
+    tokens: [
+      {
+        mint: { type: String },
+        volThresh: { type: Number, default: 50 },
+        priceThresh: { type: Number, default: 10 },
+        interval: { type: Number, default: 5 }, // in minutes
+        lastSnapshot: {
+          price: { type: Number, default: 0 },
+          volume: { type: Number, default: 0 },
+        },
+      },
+    ],
+  },
+  temp_input: {
+  type: Object,
+  default: null, // e.g. { type: 'add_token' } or { type: 'set_condition', mint: '...' }
+},
   // OTHER MODELS
+
+
 });
 
 const User = mongoose.model("User", userSchema);

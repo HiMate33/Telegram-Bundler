@@ -8,6 +8,7 @@ const handleBundleImport = require("./bundleImport");
 const accountInfoHandler = require("./accountInfo");
 const handleCreateToken = require("./createToken");
 const buyTokenHandler = require("./buyToken");
+const volumeHandler = require("./volume");
 
 
 
@@ -19,6 +20,28 @@ module.exports = (bot) => {
   bot.onText(/\/bundled_wallets/, (msg) => bundleHandler(bot, msg));
   bot.onText(/\/bundled_network/, (msg) => networkHandler(bot, msg));
   bot.onText(/\/account_info/, (msg) => accountInfoHandler(bot, msg));
+  /*
+ bot.onText(/\/addtoken (.+)/, (msg, match) => {
+    volumeHandler.handleAddToken(bot, msg, match[1].split(" "));
+  });
+
+  bot.onText(/\/setcondition (.+)/, (msg, match) => {
+    volumeHandler.handleSetCondition(bot, msg, match[1].split(" "));
+  });
+
+  bot.onText(/\/mytokens/, (msg) => {
+    volumeHandler.handleMyTokens(bot, msg);
+  });
+
+  bot.onText(/\/remove (.+)/, (msg, match) => {
+    volumeHandler.handleRemoveToken(bot, msg, match[1].split(" "));
+  });
+
+  bot.onText(/\/alerts(?: (on|off))?/, (msg, match) => {
+    volumeHandler.handleAlerts(bot, msg, match.slice(1));
+  });
+*/
+  //VOLUME HANDLER
 
   bot.on("callback_query", async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
@@ -55,6 +78,15 @@ if (action.startsWith("confirm_buy_token_") || action === "buy_token") {
   return buyTokenHandler(bot, callbackQuery);
 }
 
+//volume handler STARTS
+if (action === "volume") return volumeHandler.handleVolumeMenu(bot, callbackQuery);
+if (action === "volume_add") return volumeHandler.promptAddToken(bot, callbackQuery);
+if (action === "volume_condition") return volumeHandler.promptSetCondition(bot, callbackQuery);
+if (action === "volume_remove") return volumeHandler.promptRemoveToken(bot, callbackQuery);
+if (action === "volume_list") return volumeHandler.handleMyTokens(bot, callbackQuery);
+if (action === "volume_alerts_toggle") return volumeHandler.toggleAlerts(bot, callbackQuery);
+
+//volume handler ENDS
 if (action.startsWith("confirm_buy_token_")) {
   const [, , tokenMint, amount] = action.split("_");
  

@@ -55,7 +55,7 @@ Tap a button below to begin bundling your strategy!`;
       
       [{ text: "🆕 Create Token", callback_data: "create_token" }, { text: "🛒 Buy Tokens", callback_data: "buy_token" }],
       [
-    { text: "📊 Volume(coming soon)", callback_data: "volume" },
+    { text: "📊 Volume Tracker", callback_data: "volume" },
     { text: "🎯 Sniper(coming soon)", callback_data: "sniper" }
   ],
       [{ text: "🌐 Set Newtork Provider (RPC)", callback_data: "bundled_network" }],
