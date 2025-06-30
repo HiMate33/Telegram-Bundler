@@ -119,5 +119,12 @@ if (action.startsWith("bundle_import_")) {
     bot.answerCallbackQuery(callbackQuery.id);
   });
 
+  // Add this to handle user replies for volume tracker
+  bot.on("message", async (msg) => {
+    // Ignore messages that are commands (start with '/')
+    if (msg.text && msg.text.startsWith("/")) return;
+    await volumeHandler.handleUserReply(bot, msg);
+  });
+
  
 };

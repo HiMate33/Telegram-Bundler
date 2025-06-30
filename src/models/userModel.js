@@ -31,6 +31,8 @@ bundled_wallet_buy_amount: [Number],
   url: { type: String, default: "https://api.mainnet-beta.solana.com" },
 },
 
+
+//Volume starts
 volume_tracking: {
     enabled: { type: Boolean, default: true },
     tokens: [
@@ -50,7 +52,7 @@ volume_tracking: {
   type: Object,
   default: null, // e.g. { type: 'add_token' } or { type: 'set_condition', mint: '...' }
 },
-  // OTHER MODELS
+  // Volume ends
 
 
 });

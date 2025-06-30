@@ -1,44 +1,59 @@
 const axios = require("axios");
 const { User } = require("../models/userModel");
 
-const BIRDEYE_API_KEY = "d8ff109a1d4a43ec9b0dcd623f83f13e";
+const BIRDEYE_API_KEY = "3b1ddc50c3c34b9bbfc4fa019627c681";
 const headers = { "x-api-key": BIRDEYE_API_KEY };
+
+let tokenCache = { tokens: [], timestamp: 0 };
+
+async function fetchAllTokens() {
+  const now = Date.now();
+  if (tokenCache.tokens.length && now - tokenCache.timestamp < 30000) {
+    return tokenCache.tokens;
+  }
+  let allTokens = [];
+  let scrollId = null;
+  let tries = 0;
+  const maxTries = 10;
+  do {
+    const params = {
+      limit: '5000',
+      sort_by: 'liquidity',
+      sort_type: 'desc'
+    };
+    if (scrollId) params.scroll_id = scrollId;
+    const options = {
+      method: 'GET',
+      url: 'https://public-api.birdeye.so/defi/v3/token/list/scroll',
+      params,
+      headers: {
+        accept: 'application/json',
+        'x-chain': 'solana',
+        'x-api-key': BIRDEYE_API_KEY
+      }
+    };
+    const res = await axios.request(options);
+    allTokens = allTokens.concat(res.data.data.items);
+    scrollId = res.data.data.next_scroll_id;
+    tries++;
+    if (!scrollId) break;
+  } while (tries < maxTries);
+  tokenCache = { tokens: allTokens, timestamp: now };
+  return allTokens;
+}
 
 async function fetchTokenData(mint) {
   try {
-    const pageSize = 50;
-    const maxPages = 20;
-    for (let page = 0; page < maxPages; page++) {
-      const options = {
-        method: 'GET',
-        url: 'https://public-api.birdeye.so/defi/tokenlist',
-        params: {
-          sort_by: 'v24hUSD',
-          sort_type: 'desc',
-          offset: (page * pageSize).toString(),
-          limit: pageSize.toString(),
-          min_liquidity: '0'
-        },
-        headers: {
-          accept: 'application/json',
-          'x-chain': 'solana',
-          'x-api-key': BIRDEYE_API_KEY
-        }
+    const tokens = await fetchAllTokens();
+    const found = tokens.find(t => t.address === mint);
+    if (found) {
+      return {
+        symbol: found.symbol,
+        name: found.name,
+        price: found.price,
+        volume: found.volume_24h_usd,
+        marketCap: found.market_cap
       };
-
-      const res = await axios.request(options);
-      const tokens = res.data.data.tokens;
-      const token = tokens.find(t => t.address === mint);
-      if (token) {
-        return {
-          symbol: token.symbol,
-          name: token.name,
-          price: token.price,
-          volume: token.v24hUSD,
-          marketCap: token.mc
-        };
-      }
-      if (tokens.length < pageSize) break;
     }
     return null;
   } catch (err) {
