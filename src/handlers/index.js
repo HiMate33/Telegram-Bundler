@@ -9,6 +9,9 @@ const accountInfoHandler = require("./accountInfo");
 const handleCreateToken = require("./createToken");
 const buyTokenHandler = require("./buyToken");
 const volumeHandler = require("./volume");
+// autobundle  import
+const autobundleHandler = require("./autobundle");
+
 
 
 
@@ -77,8 +80,16 @@ if (action === "create_token") {
 if (action.startsWith("confirm_buy_token_") || action === "buy_token") {
   return buyTokenHandler(bot, callbackQuery);
 }
+// autobundle 
 
-//volume handler STARTS
+if (action === "auto_bundle") {
+  return autobundleHandler.handleAutoBundleStart(bot, callbackQuery);
+}
+if (action.startsWith("bundle_")) {
+  return autobundleHandler.handleAutoBundleActions(bot, callbackQuery);
+}
+
+
 if (action === "volume") return volumeHandler.handleVolumeMenu(bot, callbackQuery);
 if (action === "volume_add") return volumeHandler.promptAddToken(bot, callbackQuery);
 if (action === "volume_condition") return volumeHandler.promptSetCondition(bot, callbackQuery);
@@ -86,7 +97,6 @@ if (action === "volume_remove") return volumeHandler.promptRemoveToken(bot, call
 if (action === "volume_list") return volumeHandler.handleMyTokens(bot, callbackQuery);
 if (action === "volume_alerts_toggle") return volumeHandler.toggleAlerts(bot, callbackQuery);
 
-//volume handler ENDS
 if (action.startsWith("confirm_buy_token_")) {
   const [, , tokenMint, amount] = action.split("_");
  
@@ -124,6 +134,7 @@ if (action.startsWith("bundle_import_")) {
     // Ignore messages that are commands (start with '/')
     if (msg.text && msg.text.startsWith("/")) return;
     await volumeHandler.handleUserReply(bot, msg);
+     await autobundleHandler.handleUserReply(bot, msg);
   });
 
  

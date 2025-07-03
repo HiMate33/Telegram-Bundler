@@ -7,7 +7,7 @@ module.exports = (bot) => {
 
     const userData = {
       telegram_id: telegramId,
-      username: msg.from.username,
+      username: msg.from.username, 
       first_name: msg.from.first_name,
       last_name: msg.from.last_name,
       is_bot: msg.from.is_bot,
@@ -52,14 +52,27 @@ Tap a button below to begin bundling your strategy!`;
     const buttons = [
       [{ text: "⚙️ Auto Bundle", callback_data: "auto_bundle" }],
       [{ text: "👛 Set Main Wallet", callback_data: "main_wallet" }, { text: "📦 Set Bundled Wallets", callback_data: "bundled_wallets" }],
-      
+       [
+    { text: "📋 Copy Trading", callback_data: "copy_trading" }
+    
+  ],
+
       [{ text: "🆕 Create Token", callback_data: "create_token" }, { text: "🛒 Buy Tokens", callback_data: "buy_token" }],
+  [{ text: "📈 Volume Simulator", callback_data: "volume_simulator" }],
+      
+  
       [
     { text: "📊 Volume Tracker", callback_data: "volume" },
     { text: "🎯 Sniper(coming soon)", callback_data: "sniper" }
   ],
-      [{ text: "🌐 Set Newtork Provider (RPC)", callback_data: "bundled_network" }],
-      [{ text: "👤 Account Info", callback_data: "account_info" }],
+
+  [
+    { text: "📡 Live Trade Signals (coming soon)", callback_data: "live_signals" }],
+      [{ text: "🌐 Set Newtork Provider (RPC)", callback_data: "bundled_network" },{ text: "👤 Account Info", callback_data: "account_info" }],
+       [
+    { text: "🔁 Cross DEX Arbitrage (coming soon)", callback_data: "dex_arbitrage" }
+  ], 
+      
     ];
 
     bot.sendMessage(chatId, welcomeMsg, {

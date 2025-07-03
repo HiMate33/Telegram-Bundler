@@ -170,6 +170,7 @@ async function toggleAlerts(bot, callbackQuery) {
 async function handleUserReply(bot, msg) {
   const telegramId = msg.from.id;
   const chatId = msg.chat.id;
+  if (!msg.text) return;
   const text = msg.text.trim();
 
   const user = await User.findOne({ telegram_id: telegramId });
