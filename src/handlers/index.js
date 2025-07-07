@@ -4,14 +4,17 @@ const rpcProviders = require("../config/rpcProviders");
 const { User } = require("../models/userModel");
 const bundleHandler = require("./walletBundleHandler");
 const handleBundleCreate = require("./bundleCreate");
-const handleBundleImport = require("./bundleImport");
+const bundleImportHandler = require("./bundleImport"); // <-- Add this line
 const accountInfoHandler = require("./accountInfo");
 const handleCreateToken = require("./createToken");
 const buyTokenHandler = require("./buyToken");
 const volumeHandler = require("./volume");
-// autobundle  import
 const autobundleHandler = require("./autobundle");
-
+const startHandler = require("../bot/start")
+const viewWalletHanlder = require("./viewWallets");
+//const fundBundledWalletsHandler = require("./fundBundledWallets");
+const fundBundledWalletsHandler = require("./fundBundledWallets");
+const fundBundledWalletsState = require("./fundBundledWallets").fundState;
 
 
 
@@ -23,28 +26,7 @@ module.exports = (bot) => {
   bot.onText(/\/bundled_wallets/, (msg) => bundleHandler(bot, msg));
   bot.onText(/\/bundled_network/, (msg) => networkHandler(bot, msg));
   bot.onText(/\/account_info/, (msg) => accountInfoHandler(bot, msg));
-  /*
- bot.onText(/\/addtoken (.+)/, (msg, match) => {
-    volumeHandler.handleAddToken(bot, msg, match[1].split(" "));
-  });
 
-  bot.onText(/\/setcondition (.+)/, (msg, match) => {
-    volumeHandler.handleSetCondition(bot, msg, match[1].split(" "));
-  });
-
-  bot.onText(/\/mytokens/, (msg) => {
-    volumeHandler.handleMyTokens(bot, msg);
-  });
-
-  bot.onText(/\/remove (.+)/, (msg, match) => {
-    volumeHandler.handleRemoveToken(bot, msg, match[1].split(" "));
-  });
-
-  bot.onText(/\/alerts(?: (on|off))?/, (msg, match) => {
-    volumeHandler.handleAlerts(bot, msg, match.slice(1));
-  });
-*/
-  //VOLUME HANDLER
 
   bot.on("callback_query", async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
@@ -61,7 +43,17 @@ module.exports = (bot) => {
     if (action === "bundled_wallets") {
   return bundleHandler(bot, callbackQuery);
 }
-
+ if (action === "wallets_menu") {
+      const walletButtons = [
+        [{ text: "👛 Set Main Wallet", callback_data: "main_wallet" }, { text: "👜  Set Bundled Wallets", callback_data: "bundled_wallets" }],
+        [{ text: "💵 Fund Bundled Wallets", callback_data: "fund_wallet" }, { text: "👀 View Wallets", callback_data: "view_wallets" }],        
+        [{ text: "⬅️ Back", callback_data: "back_to_start" }]
+      ];
+      return bot.sendMessage(chatId, "Choose a wallet option:", {
+        reply_markup: { inline_keyboard: walletButtons },
+      });
+    } 
+// wallets options end
 
     if (action === "bundled_network") {
       return networkHandler(bot, callbackQuery);
@@ -69,10 +61,25 @@ module.exports = (bot) => {
 if (action === "account_info") {
   return accountInfoHandler(bot, callbackQuery);
 }
-
+if (action === "view_wallets") {
+  return viewWalletHanlder(bot, callbackQuery);
+}
+if (action === "back_to_start") {
+  // Call the start handler directly
+  const msg = {
+    chat: { id: chatId },
+    from: { id: telegramId }
+  };
+  return startHandler(bot)(msg);
+}
 if (action.startsWith("bundle_create_")) {
   const count = parseInt(action.split("_")[2], 10);
   return handleBundleCreate(bot, telegramId, chatId, count);
+}
+if (action.startsWith("bundle_import_")) {
+  const count = parseInt(action.split("_")[2], 10);
+   //console.log("bundle_import_ callback triggered", { telegramId, chatId, count });
+  return bundleImportHandler(bot, telegramId, chatId, count);
 }
 if (action === "create_token") {
  return handleCreateToken(bot, callbackQuery)
@@ -87,6 +94,9 @@ if (action === "auto_bundle") {
 }
 if (action.startsWith("bundle_")) {
   return autobundleHandler.handleAutoBundleActions(bot, callbackQuery);
+}
+if (action === "fund_wallet" || action === "add_fund_wallet") {
+  return fundBundledWalletsHandler(bot, callbackQuery);
 }
 
 
@@ -104,10 +114,7 @@ if (action.startsWith("confirm_buy_token_")) {
    return;
 }
 
-if (action.startsWith("bundle_import_")) {
-  const count = parseInt(action.split("_")[2], 10);
-  return handleBundleImport(bot, telegramId, chatId, count);
-}
+
 
 
     if (action.startsWith("rpc_")) {
@@ -129,12 +136,24 @@ if (action.startsWith("bundle_import_")) {
     bot.answerCallbackQuery(callbackQuery.id);
   });
 
-  // Add this to handle user replies for volume tracker
   bot.on("message", async (msg) => {
-    // Ignore messages that are commands (start with '/')
     if (msg.text && msg.text.startsWith("/")) return;
+
+     // Prioritize fundBundledWallets flow
+  const telegramId = msg.from.id;
+  if (fundBundledWalletsState && fundBundledWalletsState[telegramId]) {
+    if (fundBundledWalletsState[telegramId].confirming) {
+      await fundBundledWalletsHandler.handleConfirmation(bot, msg);
+    } else {
+      await fundBundledWalletsHandler.handleUserReply(bot, msg);
+    }
+    return;
+  }
+
     await volumeHandler.handleUserReply(bot, msg);
-     await autobundleHandler.handleUserReply(bot, msg);
+    await autobundleHandler.handleUserReply(bot, msg);
+    await bundleImportHandler.handleUserReply(bot, msg);
+  //  await fundBundledWalletsHandler.handleConfirmation(bot, msg);
   });
 
  

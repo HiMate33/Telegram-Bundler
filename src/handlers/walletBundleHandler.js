@@ -18,7 +18,7 @@ module.exports = (bot, callbackQuery) => {
       const options = {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "🆕 Create Wallets", callback_data: `bundle_create_${count}` }],
+            [{ text: "🆕 Create Wallets", callback_data: `bundle_create_${count}` }], 
             [{ text: "📥 Import Wallets", callback_data: `bundle_import_${count}` }],
           ],
         },
