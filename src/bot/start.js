@@ -55,7 +55,7 @@ Tap a button below to begin bundling your strategy!`;
       [{ text: "💰 Wallets", callback_data: "wallets_menu" }],
       [{ text: "📋 Copy Trading", callback_data: "copy_trading" }],
       [{ text: "🆕 Create Token", callback_data: "create_token" }, { text: "🛒 Buy Tokens", callback_data: "buy_token" }],
-      [{ text: "📈 Volume Simulator", callback_data: "volume_simulator" }],
+      [{ text: "⬆️ Pump Your Token (📈 volume simulator)", callback_data: "volume_simulator" }],
       [
         { text: "📊 Volume Tracker", callback_data: "volume" },
         { text: "🎯 Sniper(coming soon)", callback_data: "sniper" }

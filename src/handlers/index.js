@@ -12,9 +12,10 @@ const volumeHandler = require("./volume");
 const autobundleHandler = require("./autobundle");
 const startHandler = require("../bot/start")
 const viewWalletHanlder = require("./viewWallets");
-//const fundBundledWalletsHandler = require("./fundBundledWallets");
 const fundBundledWalletsHandler = require("./fundBundledWallets");
 const fundBundledWalletsState = require("./fundBundledWallets").fundState;
+//withdraw to main 
+const withdrawToMainHandler = require("./withdrawToMain");
 
 
 
@@ -47,12 +48,20 @@ module.exports = (bot) => {
       const walletButtons = [
         [{ text: "👛 Set Main Wallet", callback_data: "main_wallet" }, { text: "👜  Set Bundled Wallets", callback_data: "bundled_wallets" }],
         [{ text: "💵 Fund Bundled Wallets", callback_data: "fund_wallet" }, { text: "👀 View Wallets", callback_data: "view_wallets" }],        
+         [
+      { text: "⬆️ Withdraw All to Main", callback_data: "withdraw_all_to_main" }
+    ],
         [{ text: "⬅️ Back", callback_data: "back_to_start" }]
       ];
       return bot.sendMessage(chatId, "Choose a wallet option:", {
         reply_markup: { inline_keyboard: walletButtons },
       });
     } 
+    // withdraw all to main 
+
+if (action === "withdraw_all_to_main" || action === "withdraw_all_to_main_confirmed"){
+  return withdrawToMainHandler(bot, callbackQuery);
+}
 // wallets options end
 
     if (action === "bundled_network") {
