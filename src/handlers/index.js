@@ -16,9 +16,7 @@ const fundBundledWalletsHandler = require("./fundBundledWallets");
 const fundBundledWalletsState = require("./fundBundledWallets").fundState;
 //withdraw to main 
 const withdrawToMainHandler = require("./withdrawToMain");
-
-
-
+const autobundlesellHandler = require("./autobundlesell");
 
 module.exports = (bot) => {
 
@@ -96,9 +94,16 @@ if (action === "create_token") {
 if (action.startsWith("confirm_buy_token_") || action === "buy_token") {
   return buyTokenHandler(bot, callbackQuery);
 }
-// autobundle 
+// autobundle sell
+if (action === "auto_bundle_sell") {
+  return autobundlesellHandler.handleAutoBundleSell(bot, callbackQuery);
+}
+if (action.startsWith("bundle_sell_")) {
+  return autobundlesellHandler.handleAutoBundleActions(bot, callbackQuery);
+}
+// autobundle buy
 
-if (action === "auto_bundle") {
+if (action === "auto_bundle_buy") {
   return autobundleHandler.handleAutoBundleStart(bot, callbackQuery);
 }
 if (action.startsWith("bundle_")) {
@@ -161,6 +166,7 @@ if (action.startsWith("confirm_buy_token_")) {
 
     await volumeHandler.handleUserReply(bot, msg);
     await autobundleHandler.handleUserReply(bot, msg);
+    await autobundlesellHandler.handleUserReply(bot, msg);
     await bundleImportHandler.handleUserReply(bot, msg);
   //  await fundBundledWalletsHandler.handleConfirmation(bot, msg);
   });

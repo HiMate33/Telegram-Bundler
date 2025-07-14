@@ -51,7 +51,7 @@ Automate token creation and bundle-buy on *Pump.fun* 🚀
 Tap a button below to begin bundling your strategy!`;
 
     const buttons = [
-      [{ text: "⚙️ Auto Bundle", callback_data: "auto_bundle" }],
+      [{ text: "⚙️ Auto Bundle Buy", callback_data: "auto_bundle_buy" }, { text: "💰 Auto Bundle Sell", callback_data: "auto_bundle_sell" }],
       [{ text: "💰 Wallets", callback_data: "wallets_menu" }],
       [{ text: "📋 Copy Trading", callback_data: "copy_trading" }],
       [{ text: "🆕 Create Token", callback_data: "create_token" }, { text: "🛒 Buy Tokens", callback_data: "buy_token" }],
