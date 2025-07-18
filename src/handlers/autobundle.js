@@ -1,33 +1,26 @@
-const tempInputMap = {}; // in-memory flow state
+const tempInputMap = {};// temp memory for user input flow
 
 const axios = require("axios");
+const { User } = require("../models/userModel");
 const fetch = require("node-fetch");
 const bs58 = require("bs58");
-const moment = require("moment");
+const { Keypair, Connection, VersionedTransaction, PublicKey } = require("@solana/web3.js");
 const cron = require("node-cron");
-const {
-  Keypair,
-  Connection,
-  VersionedTransaction,
-  PublicKey
-} = require("@solana/web3.js");
+const moment = require("moment"); // For easier date parsing, install with: npm install moment
 
-const { User } = require("../models/userModel");
-
-////////////////////////////////////////////////////////////////////////////////
-// Helpers
-////////////////////////////////////////////////////////////////////////////////
 
 async function fetchTokenDetails(address) {
   try {
     const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${address}`;
-    const { data } = await axios.get(url);
+    const res = await axios.get(url);
+    const data = res.data;
+
     return {
       name: data.name,
       symbol: data.symbol.toUpperCase(),
       price: data.market_data.current_price.usd,
       marketCap: data.market_data.market_cap.usd,
-      liquidity: data.liquidity_score || 0,
+      liquidity: data.liquidity_score || 0, // CoinGecko may not provide liquidity, so fallback to 0
       address,
     };
   } catch (err) {
@@ -37,11 +30,13 @@ async function fetchTokenDetails(address) {
       symbol: "-",
       price: 0,
       marketCap: 0,
-      liquidity: 0,
       address,
     };
   }
 }
+ 
+
+
 
 async function buyTokenWithWallet({ user, wallet, tokenMint, amount }) {
   try {
@@ -53,26 +48,21 @@ async function buyTokenWithWallet({ user, wallet, tokenMint, amount }) {
     const keypair = Keypair.fromSecretKey(bs58.decode(wallet.privateKey));
     const userPublicKey = keypair.publicKey;
 
-    // 1) get price
     const priceUrl = `https://lite-api.jup.ag/price/v2?ids=${outputMint}&vsToken=${inputMint}`;
     const priceRes = await fetch(priceUrl);
     const priceData = await priceRes.json();
     const priceObj = priceData.data[outputMint];
-    if (!priceObj?.price) throw new Error("No price data on Jupiter.");
+    if (!priceObj || !priceObj.price) throw new Error("No price data on Jupiter.");
     const price = parseFloat(priceObj.price);
-
-    // 2) compute lamports to spend
-    const requiredSol = amount;
+    const requiredSol = parseFloat(amount) * price;
     const lamports = Math.floor(requiredSol * 1e9);
 
-    // 3) get swap quote
     const quoteUrl = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${lamports}&slippageBps=${slippageBps}&restrictIntermediateTokens=true`;
     const quoteRes = await fetch(quoteUrl);
     if (!quoteRes.ok) throw new Error(`Quote failed: ${quoteRes.status}`);
     const quote = await quoteRes.json();
-    if (!quote.routePlan?.length) throw new Error("No valid route found.");
+    if (!quote.routePlan || quote.routePlan.length === 0) throw new Error("No valid route found.");
 
-    // 4) send swap transaction
     const swapRes = await fetch("https://lite-api.jup.ag/swap/v1/swap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -102,283 +92,308 @@ async function buyTokenWithWallet({ user, wallet, tokenMint, amount }) {
       maxRetries: 2,
       skipPreflight: true,
     });
-    await connection.confirmTransaction({ signature }, "finalized");
 
+    await connection.confirmTransaction({ signature }, "finalized");
     return { success: true, signature };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Handlers
-////////////////////////////////////////////////////////////////////////////////
-
 module.exports = {
-  // Step 1: user clicks “Bundle-Buy”
   handleAutoBundleStart: async (bot, callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const telegramId = callbackQuery.from.id;
 
     tempInputMap[telegramId] = { step: "awaiting_token_address" };
-    await bot.sendMessage(
-      chatId,
-      "🔍 Please enter the *token address* you want to bundle-buy:",
-      { parse_mode: "Markdown" }
-    );
+
+    await bot.sendMessage(chatId, "🔍 Please enter the *token address* you want to bundle-buy:", {
+      parse_mode: "Markdown",
+    });
   },
 
-  // Step 2+: user replies with text (address, amount, date, etc)
   handleUserReply: async (bot, msg) => {
     const telegramId = msg.from.id;
     const chatId = msg.chat.id;
     const state = tempInputMap[telegramId];
+
     if (!state) return;
 
-    // A) after address → show details + buy options
+
     if (state.step === "awaiting_token_address") {
       const tokenAddress = msg.text.trim();
       const details = await fetchTokenDetails(tokenAddress);
-      state.token = details;
-      state.step = "awaiting_buy_option";
 
-      return bot.sendMessage(
+      tempInputMap[telegramId] = {
+        step: "awaiting_buy_option",
+        token: details,
+      };
+
+      await bot.sendMessage(
         chatId,
         `🧾 *Token Details:*\n\n` +
         `• Name: ${details.name}\n` +
         `• Symbol: ${details.symbol}\n` +
         `• Market Cap: $${details.marketCap.toLocaleString()}\n` +
-        `• Price: $${details.price}\n` +
-        `• Address: ${details.address}`,
+          `• Price: $${details.price}\n` +
+        `• Address: $${details.address.toLocaleString()}`,
         {
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
                 { text: "🟢 Buy Now", callback_data: "bundle_buy_now" },
-                { text: "⏰ Buy Later", callback_data: "bundle_buy_later" }
+                { text: "⏰ Buy Later", callback_data: "bundle_buy_later" },
               ],
               [
-                { text: "💰 Buy on Condition", callback_data: "bundle_buy_on_condition" }
+                { text: "💰 Buy on Condition", callback_data: "bundle_buy_on_condition" },
+                { text: "🧨 Buy All", callback_data: "bundle_buy_all" }
               ]
-            ]
-          }
+            ],
+          },
         }
       );
     }
 
-    // B) after custom SOL amount
-    if (state.step === "awaiting_amount") {
-      const amt = parseFloat(msg.text.trim());
-      if (isNaN(amt) || amt <= 0) {
-        return bot.sendMessage(chatId, "❌ Please enter a valid positive number.");
-      }
-      state.amount = amt;                   // in SOL
-      state.step = "awaiting_confirm";
 
-      return bot.sendMessage(
+    else if (state.step === "awaiting_amount") {
+      const amount = parseFloat(msg.text.trim());
+      if (isNaN(amount) || amount <= 0) {
+        return bot.sendMessage(chatId, "❌ Please enter a valid amount (positive number).");
+      }
+
+      tempInputMap[telegramId].amount = amount;
+      tempInputMap[telegramId].step = "awaiting_confirm";
+
+      await bot.sendMessage(
         chatId,
-        `✅ Ready to execute *${state.buyType}* using *${amt} SOL* per wallet.\n\n` +
+        `✅ Ready to execute *${state.buyType}*:\n\n` +
+        `Token: ${state.token.name} (${state.token.symbol})\n` +
+        `Amount per wallet: ${amount}\n\n` +
         `Press *Confirm* to execute.`,
         {
           parse_mode: "Markdown",
           reply_markup: {
-            inline_keyboard: [
-              [{ text: "✅ Confirm Buy", callback_data: "bundle_confirm_buy" }]
-            ]
-          }
+            inline_keyboard: [[{ text: "✅ Confirm Buy", callback_data: "bundle_confirm_buy" }]],
+          },
         }
       );
     }
 
-    // C) after condition price
-    if (state.step === "awaiting_condition_price") {
-      const p = parseFloat(msg.text.trim());
-      if (isNaN(p) || p <= 0) {
+
+    else if (state.step === "awaiting_condition_price") {
+      const price = parseFloat(msg.text.trim());
+      if (isNaN(price) || price <= 0) {
         return bot.sendMessage(chatId, "❌ Please enter a valid price.");
       }
-      state.conditionPrice = p;
-      state.step = "awaiting_amount";
-      return bot.sendMessage(
-        chatId,
-        "💸 Now enter the *amount (in SOL)* each wallet should buy once price is hit:"
-      );
+
+      tempInputMap[telegramId].conditionPrice = price;
+      tempInputMap[telegramId].step = "awaiting_amount";
+
+      return bot.sendMessage(chatId, "💸 Now enter the *amount* (in SOL) each wallet should buy:");
     }
 
-    // D) after “Buy Later” date
-    if (state.step === "awaiting_buy_time") {
+
+    else if (state.step === "awaiting_buy_time") {
       const input = msg.text.trim();
       const date = moment(input, "YYYY-MM-DD HH:mm", true);
       if (!date.isValid() || date.isBefore(moment())) {
-        return bot.sendMessage(
-          chatId,
-          "❌ Please enter a valid future date/time in `YYYY-MM-DD HH:mm` (UTC)."
-        );
+        return bot.sendMessage(chatId, "❌ Please enter a valid future date and time in the format YYYY-MM-DD HH:mm (e.g., 2025-07-03 18:30)");
       }
-      state.buyTime = date.toDate();
-      state.step = "awaiting_amount";
-      return bot.sendMessage(
-        chatId,
-        "💸 Enter the *amount (in SOL)* each bundled wallet should buy:"
-      );
+      tempInputMap[telegramId].buyTime = date.toDate();
+      tempInputMap[telegramId].step = "awaiting_amount";
+      return bot.sendMessage(chatId, "💸 Enter the *amount (in SOL)* each bundled wallet should buy:");
     }
   },
 
-  // Step 3: user taps one of the inline buttons
   handleAutoBundleActions: async (bot, callbackQuery) => {
     const telegramId = callbackQuery.from.id;
     const chatId = callbackQuery.message.chat.id;
     const action = callbackQuery.data;
+
     const state = tempInputMap[telegramId];
     if (!state || !state.token) return;
 
-    // 3A) Buy Now → choose max or custom
+
     if (action === "bundle_buy_now") {
       state.buyType = "Buy Now";
-      state.step = "awaiting_buy_mode";
-      return bot.sendMessage(
-        chatId,
-        "💸 How much SOL should each wallet spend?",
-        {
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "🤑 Spend Max SOL",    callback_data: "bundle_buy_max_sol" },
-              { text: "✍️ Enter Custom SOL", callback_data: "bundle_buy_custom_sol" }
-            ]]
-          }
-        }
-      );
-    }
-
-    // 3B) Max-SOL selected
-    if (action === "bundle_buy_max_sol") {
-      state.buyMode = "max";
-      state.step = "awaiting_confirm";
-      return bot.sendMessage(
-        chatId,
-        `🤑 Will spend *all available SOL* (minus a small fee buffer) in each bundled wallet.\n\n` +
-        `Press *Confirm* when you’re ready to execute.`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "✅ Confirm Buy", callback_data: "bundle_confirm_buy" }
-            ]]
-          }
-        }
-      );
-    }
-
-    // 3C) Custom-SOL selected
-    if (action === "bundle_buy_custom_sol") {
-      state.buyMode = "custom";
       state.step = "awaiting_amount";
-      return bot.sendMessage(
-        chatId,
-        "✍️ Enter the *amount of SOL* each bundled wallet should spend:"
-      );
+
+      return bot.sendMessage(chatId, "💸 Enter the *amount of tokens* each bundled wallet should buy:");
     }
 
-    // 3D) Buy Later
     if (action === "bundle_buy_later") {
       state.buyType = "Buy Later";
       state.step = "awaiting_buy_time";
-      return bot.sendMessage(
-        chatId,
-        "⏰ Enter the *date and time* you want to buy (format: YYYY-MM-DD HH:mm UTC):"
-      );
+      return bot.sendMessage(chatId, "⏰ Enter the *date and time* you want to buy (format: YYYY-MM-DD HH:mm):");
     }
 
-    // 3E) Buy on Condition
     if (action === "bundle_buy_on_condition") {
       state.buyType = "Buy on Condition";
       state.step = "awaiting_condition_price";
-      return bot.sendMessage(
-        chatId,
-        "📉 Enter the *price (in SOL)* the token should fall to before buying:"
-      );
+
+      return bot.sendMessage(chatId, "📉 Enter the *price (in SOL)* the token should fall to before buying:");
     }
 
-    // 3F) Confirm Buy (either max or custom)
+
+    if (action === "bundle_buy_all") {
+  state.buyType = "Buy All";
+  state.step = "awaiting_confirm";
+
+  return bot.sendMessage(chatId, `🧨 You've chosen *Buy All*. This will use all SOL (minus ~0.01 for fees) in each bundled wallet to buy ${state.token.symbol}.\n\nPress *Confirm* to proceed.`, {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [[{ text: "✅ Confirm Buy", callback_data: "bundle_confirm_buy" }]],
+    },
+  });
+}
+    
+
     if (action === "bundle_confirm_buy") {
       const user = await User.findOne({ telegram_id: telegramId });
-      if (!user?.bundled_wallets?.length) {
+
+      if (!user || !user.bundled_wallets || user.bundled_wallets.length === 0) {
         return bot.sendMessage(chatId, "⚠️ You have no bundled wallets set.");
       }
 
-      // — Schedule “Buy Later” if needed
-      if (state.buyType === "Buy Later" && state.buyTime) {
-        const cronExpr = moment(state.buyTime).format("m H D M *");
-        cron.schedule(cronExpr, async () => {
-          await bot.sendMessage(chatId, "⏳ Performing scheduled buy now…");
-          // (reuse the immediate-exec logic below)
-          for (let w of user.bundled_wallets) {
+      const { token, amount, conditionPrice, buyType, buyTime } = state;
+
+
+
+ 
+   if (buyType === "Buy All") {
+    await bot.sendMessage(chatId, `🧨 Executing *Buy All* for ${token.symbol} using all available SOL (minus fee) per wallet...`, {
+      parse_mode: "Markdown",
+    });
+
+    const inputMint = "So11111111111111111111111111111111111111112";
+    const outputMint = token.address;
+    const pricesRes = await fetch(`https://lite-api.jup.ag/price/v3?ids=${inputMint},${outputMint}`);
+    const prices = await pricesRes.json();
+    const solUsd = prices[inputMint]?.usdPrice;
+    const tokenUsd = prices[outputMint]?.usdPrice;
+
+    if (!solUsd || !tokenUsd) {
+      await bot.sendMessage(chatId, "❌ Failed to get price data.");
+      return;
+    }
+
+    for (let wallet of user.bundled_wallets) {
+      try {
+        const connection = new Connection(user.rpc_provider?.url || "https://api.mainnet-beta.solana.com", "confirmed");
+        const pubkey = new PublicKey(wallet.publicKey);
+        const solBalanceLamports = await connection.getBalance(pubkey);
+        const solBalance = solBalanceLamports / 1e9;
+
+        const netSol = solBalance - 0.01;
+        if (netSol <= 0) {
+          await bot.sendMessage(chatId, `⚠️ [${wallet.publicKey}] Insufficient SOL after fee deduction.`);
+          continue;
+        }
+
+        const totalUsd = netSol * solUsd;
+        const tokenAmount = totalUsd / tokenUsd;
+
+        const result = await buyTokenWithWallet({
+          user,
+          wallet,
+          tokenMint: token.address,
+          amount: tokenAmount,
+        });
+
+        if (result.success) {
+          await bot.sendMessage(
+            chatId,
+            `✅ [${wallet.publicKey}] Bought ${tokenAmount.toFixed(6)} ${token.symbol}!\n[View Tx](https://solscan.io/tx/${result.signature})`,
+            { parse_mode: "Markdown", disable_web_page_preview: false }
+          );
+        } else {
+          await bot.sendMessage(
+            chatId,
+            `❌ [${wallet.publicKey}] Buy failed: ${result.error}`
+          );
+        }
+      } catch (err) {
+        await bot.sendMessage(chatId, `❌ [${wallet.publicKey}] Error: ${err.message}`);
+      }
+    }
+
+    delete tempInputMap[telegramId];
+    return;
+  }     
+
+
+      if (buyType === "Buy Later" && buyTime) {
+        
+        const cronTime = moment(buyTime).format("m H D M *"); // minute hour day month *
+        cron.schedule(cronTime, async () => {
+          await bot.sendMessage(chatId, "⏳ Performing scheduled buy now...");
+          for (let wallet of user.bundled_wallets) {
             try {
-              // same lamports/spendSol logic…
-              // …
+              const result = await buyTokenWithWallet({
+                user,
+                wallet,
+                tokenMint: token.address,
+                amount,
+              });
+              if (result.success) {
+                await bot.sendMessage(
+                  chatId,
+                  `✅ [${wallet.publicKey}] Buy successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`,
+                  { parse_mode: "Markdown", disable_web_page_preview: false }
+                );
+              } else {
+                await bot.sendMessage(
+                  chatId,
+                  `❌ [${wallet.publicKey}] Buy failed: ${result.error}`
+                );
+              }
             } catch (err) {
-              await bot.sendMessage(chatId, `❌ [${w.publicKey}] Error: ${err.message}`);
+              await bot.sendMessage(
+                chatId,
+                `❌ [${wallet.publicKey}] Error: ${err.message}`
+              );
             }
           }
         }, { scheduled: true, timezone: "UTC" });
 
-        await bot.sendMessage(
-          chatId,
-          `⏰ Scheduled buy for ${moment(state.buyTime).format("YYYY-MM-DD HH:mm")} UTC!`
-        );
+        await bot.sendMessage(chatId, `⏰ Scheduled buy for ${moment(buyTime).format("YYYY-MM-DD HH:mm")} UTC!`);
         delete tempInputMap[telegramId];
         return;
       }
 
-      // — Immediate execution for Buy Now & Buy on Condition
-      await bot.sendMessage(
-        chatId,
-        `🚀 Executing *${state.buyType}* for ${state.token.symbol} ` +
-        `with ${user.bundled_wallets.length} wallets…`,
-        { parse_mode: "Markdown" }
-      );
+      await bot.sendMessage(chatId, `🚀 Executing *${buyType}* for ${token.symbol} with ${user.bundled_wallets.length} wallets...`, {
+        parse_mode: "Markdown",
+      
+    });
 
-      const rpcUrl = user.rpc_provider?.url || "https://api.mainnet-beta.solana.com";
-      const results = [];
 
+      // Actually perform the buy for each wallet
       for (let wallet of user.bundled_wallets) {
         try {
-          // 1) fetch balance
-          const conn = new Connection(rpcUrl, "confirmed");
-          const pk   = new PublicKey(wallet.publicKey);
-          const bal  = await conn.getBalance(pk);
-
-          // 2) compute spend lamports
-          const feeBuffer     = 1e6; // ~0.001 SOL
-          const spendLamports = state.buyMode === "max"
-            ? Math.max(0, bal - feeBuffer)
-            : Math.floor(state.amount * 1e9);
-          const spendSol = spendLamports / 1e9;
-
-          // 3) execute swap
-          const res = await buyTokenWithWallet({
+          const result = await buyTokenWithWallet({
             user,
             wallet,
-            tokenMint: state.token.address,
-            amount: spendSol,
+            tokenMint: token.address,
+            amount,
           });
-          results.push({ pubkey: wallet.publicKey, res });
+          if (result.success) {
+            await bot.sendMessage(
+              chatId,
+              `✅ [${wallet.publicKey}] Buy successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`,
+              { parse_mode: "Markdown", disable_web_page_preview: false }
+            );
+          } else {
+            await bot.sendMessage(
+              chatId,
+              `❌ [${wallet.publicKey}] Buy failed: ${result.error}`
+            );
+          }
         } catch (err) {
-          results.push({ pubkey: wallet.publicKey, res: { success: false, error: err.message } });
-        }
-      }
-
-      // 4) report back
-      for (let { pubkey, res } of results) {
-        if (res.success) {
           await bot.sendMessage(
             chatId,
-            `✅ [${pubkey}] Buy successful!\n` +
-            `[View on Solscan](https://solscan.io/tx/${res.signature})`,
-            { parse_mode: "Markdown", disable_web_page_preview: false }
+            `❌ [${wallet.publicKey}] Error: ${err.message}`
           );
-        } else {
-          await bot.sendMessage(chatId, `❌ [${pubkey}] Buy failed: ${res.error}`);
         }
       }
 

@@ -13,7 +13,6 @@ async function getTokenDecimals(tokenMintAddress, connection) {
   try {
     const tokenMintPublicKey = new PublicKey(tokenMintAddress);
     const info = await connection.getParsedAccountInfo(tokenMintPublicKey);
-
     if (info.value && info.value.data && info.value.data.parsed && info.value.data.parsed.info) {
       return info.value.data.parsed.info.decimals;
     }
@@ -29,11 +28,8 @@ async function fetchTokenDetails(address) {
     const url = `https://api.coingecko.com/api/v3/coins/solana/contract/${address}`;
     const res = await axios.get(url);
     const data = res.data;
-
-    
     const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
     const decimals = await getTokenDecimals(address, connection);
-
     return {
       name: data.name,
       symbol: data.symbol.toUpperCase(),
@@ -41,11 +37,10 @@ async function fetchTokenDetails(address) {
       marketCap: data.market_data.market_cap.usd,
       liquidity: data.liquidity_score || 0,
       address,
-      decimals, 
+      decimals,
     };
   } catch (err) {
     console.error("CoinGecko error:", err.message);
-    
     let decimals = 0;
     try {
       const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
@@ -53,76 +48,71 @@ async function fetchTokenDetails(address) {
     } catch (decimalErr) {
       console.error("Error fetching decimals fallback:", decimalErr.message);
     }
-
     return {
       name: "Not found",
       symbol: "-",
       price: 0,
       marketCap: 0,
       address,
-      decimals, 
+      decimals,
     };
   }
 }
- 
 
-
-async function buyTokenWithWallet({ user, wallet, tokenMint, amount }) {
+// Core sell logic using Jupiter
+async function sellTokenWithWallet({ user, wallet, tokenMint, amount }) {
   try {
-    const inputMint = "So11111111111111111111111111111111111111112"; 
-    const outputMint = tokenMint;
-    const slippageBps = 50;
-    const rpcUrl = user.rpc_provider?.url || "https://api.mainnet-beta.solana.com";
+    const rpcUrl     = user.rpc_provider?.url || "https://api.mainnet-beta.solana.com";
     const connection = new Connection(rpcUrl, "confirmed");
-    const keypair = Keypair.fromSecretKey(bs58.decode(wallet.privateKey));
-    const userPublicKey = keypair.publicKey;
+    const keypair    = Keypair.fromSecretKey(bs58.decode(wallet.privateKey));
+    const userPubKey = keypair.publicKey;
 
-    const priceUrl = `https://lite-api.jup.ag/price/v2?ids=${outputMint}&vsToken=${inputMint}`;
-    const priceRes = await fetch(priceUrl);
-    const priceData = await priceRes.json();
-    const priceObj = priceData.data[outputMint];
-    if (!priceObj || !priceObj.price) throw new Error("No price data on Jupiter.");
-    const price = parseFloat(priceObj.price);
-    const requiredSol = parseFloat(amount) * price;
-    const lamports = Math.floor(requiredSol * 1e9);
+    // Amount in smallest units
+    const decimals      = await getTokenDecimals(tokenMint, connection);
+    const amountInUnits = BigInt(Math.floor(amount * Math.pow(10, decimals)));
 
-    const quoteUrl = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${lamports}&slippageBps=${slippageBps}&restrictIntermediateTokens=true`;
+    // Jupiter quote
+    const slippageBps = 50;
+    const quoteUrl =
+      `https://lite-api.jup.ag/swap/v1/quote` +
+      `?inputMint=${tokenMint}` +
+      `&outputMint=${SOL_MINT}` +
+      `&amount=${amountInUnits}` +
+      `&slippageBps=${slippageBps}` +
+      `&restrictIntermediateTokens=true`;
     const quoteRes = await fetch(quoteUrl);
-    if (!quoteRes.ok) throw new Error(`Quote failed: ${quoteRes.status}`);
-    const quote = await quoteRes.json();
-    if (!quote.routePlan || quote.routePlan.length === 0) throw new Error("No valid route found.");
+    if (!quoteRes.ok) {
+      const text = await quoteRes.text();
+      throw new Error(`Quote failed HTTP ${quoteRes.status}: ${text}`);
+    }
+    const quoteData = await quoteRes.json();
 
+    // Jupiter swap
     const swapRes = await fetch("https://lite-api.jup.ag/swap/v1/swap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: userPublicKey.toBase58(),
+        quoteResponse: quoteData,
+        userPublicKey: userPubKey.toBase58(),
         dynamicComputeUnitLimit: true,
         dynamicSlippage: true,
         prioritizationFeeLamports: {
-          priorityLevelWithMaxLamports: {
-            maxLamports: 1000000,
-            priorityLevel: "veryHigh",
-          },
-        },
-      }),
+          priorityLevelWithMaxLamports: { maxLamports: 1000000, priorityLevel: "veryHigh" }
+        }
+      })
     });
     if (!swapRes.ok) throw new Error(`Swap API failed: ${swapRes.status}`);
     const swapData = await swapRes.json();
-    if (!swapData.swapTransaction) throw new Error("No transaction returned.");
+    if (!swapData.swapTransaction) throw new Error("No transaction returned from Jupiter.");
 
-    const txBuffer = Buffer.from(swapData.swapTransaction, "base64");
+    // Sign & send
+    const txBuffer    = Buffer.from(swapData.swapTransaction, "base64");
     const versionedTx = VersionedTransaction.deserialize(txBuffer);
     versionedTx.sign([keypair]);
-    const rawTx = versionedTx.serialize();
-
-    const signature = await connection.sendRawTransaction(rawTx, {
-      maxRetries: 2,
-      skipPreflight: true,
-    });
-
+    const rawTx       = versionedTx.serialize();
+    const signature   = await connection.sendRawTransaction(rawTx, { maxRetries: 2, skipPreflight: true });
     await connection.confirmTransaction({ signature }, "finalized");
+
     return { success: true, signature };
   } catch (err) {
     return { success: false, error: err.message };
@@ -131,221 +121,197 @@ async function buyTokenWithWallet({ user, wallet, tokenMint, amount }) {
 
 module.exports = {
   handleAutoBundleSell: async (bot, callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
+    const chatId     = callbackQuery.message.chat.id;
     const telegramId = callbackQuery.from.id;
-
     tempInputMap[telegramId] = { step: "awaiting_token_address" };
-
-    await bot.sendMessage(chatId, "🔍 Please enter the *token address* you want to bundle-Sell:", {
-      parse_mode: "Markdown",
-    });
+    await bot.sendMessage(chatId,
+      "🔍 Please enter the *token address* you want to bundle-sell:",
+      { parse_mode: "Markdown" }
+    );
   },
 
   handleUserReply: async (bot, msg) => {
     const telegramId = msg.from.id;
-    const chatId = msg.chat.id;
-    const state = tempInputMap[telegramId];
-
+    const chatId     = msg.chat.id;
+    const state      = tempInputMap[telegramId];
     if (!state) return;
-
 
     if (state.step === "awaiting_token_address") {
       const tokenAddress = msg.text.trim();
-      const details = await fetchTokenDetails(tokenAddress);
-
-      tempInputMap[telegramId] = {
-        step: "awaiting_buy_option",
-        token: details,
-      };
-
-      await bot.sendMessage(
+      const details      = await fetchTokenDetails(tokenAddress);
+      tempInputMap[telegramId] = { step: "awaiting_sell_option", token: details };
+      return bot.sendMessage(
         chatId,
-        `🧾 *Token Details:*\n\n` +
-        `• Name: ${details.name}\n` +
-        `• Symbol: ${details.symbol}\n` +
-        `• Market Cap: $${details.marketCap.toLocaleString()}\n` +
-          `• Price: $${details.price}\n` +
-        `• Address: $${details.address.toLocaleString()}`,
+        `🧾 *Token Details:*\n\n• Name: ${details.name}\n• Symbol: ${details.symbol}\n• Market Cap: $${details.marketCap.toLocaleString()}\n• Price: $${details.price}\n• Address: ${details.address}`,
         {
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "🟢 Sell Now", callback_data: "bundle_buy_now" },
-                { text: "⏰ Sell Later", callback_data: "bundle_buy_later" },
+                { text: "🟢 Sell Now",           callback_data: "bundle_sell_now" },
+                { text: "⏰ Sell Later",         callback_data: "bundle_sell_later" }
               ],
               [
-                { text: "💰 Sell on Condition", callback_data: "bundle_buy_on_condition" }
+                { text: "💰 Sell on Condition", callback_data: "bundle_sell_on_condition" },
+                { text: "💯 Sell All",           callback_data: "bundle_sell_all" }
               ]
-            ],
-          },
+            ]
+          }
         }
       );
     }
 
-
-    else if (state.step === "awaiting_amount") {
+    if (state.step === "awaiting_amount") {
       const amount = parseFloat(msg.text.trim());
       if (isNaN(amount) || amount <= 0) {
-        return bot.sendMessage(chatId, "❌ Please enter a valid amount (positive number).");
+        return bot.sendMessage(chatId, "❌ Please enter a valid amount.");
       }
-
-      tempInputMap[telegramId].amount = amount;
-      tempInputMap[telegramId].step = "awaiting_confirm";
-
-      await bot.sendMessage(
+      state.amount   = amount;
+      state.step     = "awaiting_confirm";
+      return bot.sendMessage(
         chatId,
-        `✅ Ready to execute *${state.buyType}*:\n\n` +
-        `Token: ${state.token.name} (${state.token.symbol})\n` +
-        `Amount per wallet: ${amount}\n\n` +
-        `Press *Confirm* to execute.`,
+        `✅ Ready to execute *${state.sellType}*:\n\nToken: ${state.token.name} (${state.token.symbol})\nAmount per wallet: ${amount}\n\nPress *Confirm* to execute.`,
         {
           parse_mode: "Markdown",
           reply_markup: {
-            inline_keyboard: [[{ text: "✅ Confirm Buy", callback_data: "bundle_confirm_buy" }]],
-          },
+            inline_keyboard: [[{ text: "✅ Confirm Sell", callback_data: "bundle_sell_confirm" }]]
+          }
         }
       );
     }
 
-
-    else if (state.step === "awaiting_condition_price") {
+    if (state.step === "awaiting_condition_price") {
       const price = parseFloat(msg.text.trim());
-      if (isNaN(price) || price <= 0) {
-        return bot.sendMessage(chatId, "❌ Please enter a valid price.");
-      }
-
-      tempInputMap[telegramId].conditionPrice = price;
-      tempInputMap[telegramId].step = "awaiting_amount";
-
-      return bot.sendMessage(chatId, "💸 Now enter the *amount* (in SOL) each wallet should Sell:");
+      if (isNaN(price) || price <= 0) return bot.sendMessage(chatId, "❌ Please enter a valid price.");
+      state.conditionPrice = price;
+      state.step           = "awaiting_amount";
+      return bot.sendMessage(
+        chatId,
+        "💸 Now enter the *amount* (in SOL) each wallet should sell:",
+        { parse_mode: "Markdown" }
+      );
     }
 
-
-    else if (state.step === "awaiting_buy_time") {
-      const input = msg.text.trim();
-      const date = moment(input, "YYYY-MM-DD HH:mm", true);
+    if (state.step === "awaiting_sell_time") {
+      const date = moment(msg.text.trim(), "YYYY-MM-DD HH:mm", true);
       if (!date.isValid() || date.isBefore(moment())) {
-        return bot.sendMessage(chatId, "❌ Please enter a valid future date and time in the format YYYY-MM-DD HH:mm (e.g., 2025-07-03 18:30)");
+        return bot.sendMessage(chatId, "❌ Invalid date. Use YYYY-MM-DD HH:mm and a future time.");
       }
-      tempInputMap[telegramId].buyTime = date.toDate();
-      tempInputMap[telegramId].step = "awaiting_amount";
-      return bot.sendMessage(chatId, "💸 Enter the *amount (in SOL)* each bundled wallet should Sell:");
+      state.sellTime = date.toDate();
+      state.step     = "awaiting_amount";
+      return bot.sendMessage(
+        chatId,
+        "💸 Enter the *amount* each bundled wallet should sell:",
+        { parse_mode: "Markdown" }
+      );
     }
   },
 
   handleAutoBundleActions: async (bot, callbackQuery) => {
     const telegramId = callbackQuery.from.id;
-    const chatId = callbackQuery.message.chat.id;
-    const action = callbackQuery.data;
-
-    const state = tempInputMap[telegramId];
+    const chatId     = callbackQuery.message.chat.id;
+    const action     = callbackQuery.data;
+    const state      = tempInputMap[telegramId];
     if (!state || !state.token) return;
 
-
-    if (action === "bundle_buy_now") {
-      state.buyType = "Buy Now";
-      state.step = "awaiting_amount";
-
-      return bot.sendMessage(chatId, "💸 Enter the *amount of tokens* each bundled wallet should Sell:");
-    }
-
-    if (action === "bundle_buy_later") {
-      state.buyType = "Buy Later";
-      state.step = "awaiting_buy_time";
-      return bot.sendMessage(chatId, "⏰ Enter the *date and time* you want to buy (format: YYYY-MM-DD HH:mm):");
-    }
-
-    if (action === "bundle_buy_on_condition") {
-      state.buyType = "Buy on Condition";
-      state.step = "awaiting_condition_price";
-
-      return bot.sendMessage(chatId, "📉 Enter the *price (in SOL)* the token should fall to before buying:");
-    }
-
-
-    if (action === "bundle_confirm_buy") {
+    // Sell All (100%) option
+    if (action === "bundle_sell_all") {
+      state.sellType = "Sell All";
+      state.sellAll  = true;
+      state.step     = "awaiting_confirm";
       const user = await User.findOne({ telegram_id: telegramId });
+      return bot.sendMessage(
+        chatId,
+        `✅ Ready to execute *Sell All* for ${state.token.symbol} with ${user?.bundled_wallets?.length || 0} wallets\nPress *Confirm* to execute.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[{ text: "✅ Confirm Sell", callback_data: "bundle_sell_confirm" }]]
+          }
+        }
+      );
+    }
 
-      if (!user || !user.bundled_wallets || user.bundled_wallets.length === 0) {
+    if (action === "bundle_sell_now") {
+      state.sellType = "Sell Now";
+      state.step     = "awaiting_amount";
+      return bot.sendMessage(chatId, "💸 Enter the *amount* each bundled wallet should sell:", { parse_mode: "Markdown" });
+    }
+
+    if (action === "bundle_sell_later") {
+      state.sellType = "Sell Later";
+      state.step     = "awaiting_sell_time";
+      return bot.sendMessage(chatId, "⏰ Enter the *date and time* you want to sell (YYYY-MM-DD HH:mm):", { parse_mode: "Markdown" });
+    }
+
+    if (action === "bundle_sell_on_condition") {
+      state.sellType = "Sell on Condition";
+      state.step     = "awaiting_condition_price";
+      return bot.sendMessage(chatId, "📉 Enter the *price (in SOL)* the token should reach before selling:", { parse_mode: "Markdown" });
+    }
+
+    if (action === "bundle_sell_confirm") {
+      const user = await User.findOne({ telegram_id: telegramId });
+      if (!user || !user.bundled_wallets?.length) {
         return bot.sendMessage(chatId, "⚠️ You have no bundled wallets set.");
       }
+      const { token, amount: inputAmount, sellType, sellTime, sellAll } = state;
 
-      const { token, amount, conditionPrice, buyType, buyTime } = state;
+      // Prepare chain connection if Sell All
+      let connection, decimals;
+      if (sellAll) {
+        connection = new Connection(user.rpc_provider?.url || "https://api.mainnet-beta.solana.com", "confirmed");
+        decimals   = await getTokenDecimals(token.address, connection);
+      }
 
-      if (buyType === "Buy Later" && buyTime) {
-        
-        const cronTime = moment(buyTime).format("m H D M *");
+      // Scheduled Sell Later
+      if (sellType === "Sell Later" && sellTime) {
+        const cronTime = moment(sellTime).format("m H D M *");
         cron.schedule(cronTime, async () => {
-          await bot.sendMessage(chatId, "⏳ Performing scheduled buy now...");
+          await bot.sendMessage(chatId, "⏳ Performing scheduled sell now...");
           for (let wallet of user.bundled_wallets) {
-            try {
-              const result = await buyTokenWithWallet({
-                user,
-                wallet,
-                tokenMint: token.address,
-                amount,
-              });
-              if (result.success) {
-                await bot.sendMessage(
-                  chatId,
-                  `✅ [${wallet.publicKey}] Buy successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`,
-                  { parse_mode: "Markdown", disable_web_page_preview: false }
-                );
-              } else {
-                await bot.sendMessage(
-                  chatId,
-                  `❌ [${wallet.publicKey}] Buy failed: ${result.error}`
-                );
-              }
-            } catch (err) {
-              await bot.sendMessage(
-                chatId,
-                `❌ [${wallet.publicKey}] Error: ${err.message}`
+            let amt = inputAmount;
+            if (sellAll) {
+              const parsed = await connection.getParsedTokenAccountsByOwner(
+                new PublicKey(wallet.publicKey),
+                { mint: new PublicKey(token.address) }
               );
+              const raw = parsed.value.reduce((sum, acct) => sum + BigInt(acct.account.data.parsed.info.tokenAmount.amount), BigInt(0));
+              amt = Number(raw) / Math.pow(10, decimals);
+            }
+            const result = await sellTokenWithWallet({ user, wallet, tokenMint: token.address, amount: amt });
+            if (result.success) {
+              await bot.sendMessage(chatId, `✅ [${wallet.publicKey}] Sell successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`, { parse_mode: "Markdown", disable_web_page_preview: false });
+            } else {
+              await bot.sendMessage(chatId, `❌ [${wallet.publicKey}] Sell failed: ${result.error}`);
             }
           }
         }, { scheduled: true, timezone: "UTC" });
-
-        await bot.sendMessage(chatId, `⏰ Scheduled buy for ${moment(buyTime).format("YYYY-MM-DD HH:mm")} UTC!`);
+        await bot.sendMessage(chatId, `⏰ Scheduled sell for ${moment(sellTime).format("YYYY-MM-DD HH:mm")} UTC!`);
         delete tempInputMap[telegramId];
         return;
       }
 
-      await bot.sendMessage(chatId, `🚀 Executing *${buyType}* for ${token.symbol} with ${user.bundled_wallets.length} wallets...`, {
-        parse_mode: "Markdown",
-      });
-
-    
+      // Immediate or conditional sell
+      await bot.sendMessage(chatId, `🚀 Executing *${sellType}* for ${token.symbol} with ${user.bundled_wallets.length} wallets...`, { parse_mode: "Markdown" });
       for (let wallet of user.bundled_wallets) {
-        try {
-          const result = await buyTokenWithWallet({
-            user,
-            wallet,
-            tokenMint: token.address,
-            amount,
-          });
-          if (result.success) {
-            await bot.sendMessage(
-              chatId,
-              `✅ [${wallet.publicKey}] Sell successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`,
-              { parse_mode: "Markdown", disable_web_page_preview: false }
-            );
-          } else {
-            await bot.sendMessage(
-              chatId,
-              `❌ [${wallet.publicKey}] Buy failed: ${result.error}`
-            );
-          }
-        } catch (err) {
-          await bot.sendMessage(
-            chatId,
-            `❌ [${wallet.publicKey}] Error: ${err.message}`
+        let amt = inputAmount;
+        if (sellAll) {
+          const parsed = await connection.getParsedTokenAccountsByOwner(
+            new PublicKey(wallet.publicKey),
+            { mint: new PublicKey(token.address) }
           );
+          const raw = parsed.value.reduce((sum, acct) => sum + BigInt(acct.account.data.parsed.info.tokenAmount.amount), BigInt(0));
+          amt = Number(raw) / Math.pow(10, decimals);
+        }
+        const result = await sellTokenWithWallet({ user, wallet, tokenMint: token.address, amount: amt });
+        if (result.success) {
+          await bot.sendMessage(chatId, `✅ [${wallet.publicKey}] Sell successful!\n[View on Solscan](https://solscan.io/tx/${result.signature})`, { parse_mode: "Markdown", disable_web_page_preview: false });
+        } else {
+          await bot.sendMessage(chatId, `❌ [${wallet.publicKey}] Sell failed: ${result.error}`);
         }
       }
-
       delete tempInputMap[telegramId];
     }
-  },
+  }
 };

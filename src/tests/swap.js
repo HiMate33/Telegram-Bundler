@@ -7,7 +7,7 @@ const {
   VersionedTransaction,
 } = require("@solana/web3.js");
 
-const secretKeyBs58 = "3ALSFVSaKKje2FxsGeV3M2w2gJFzrYjznNcTXDqGZC6yKhUnr7zpwUZV43Tp8a7ntuERuvf9sDEECMG7NAgTUaWR"; // <-- Replace with your bs58 secret key string
+const secretKeyBs58 = "hyjgAhVXVK7DryJpPAkyxUmBg6RzgkMPAzagNuZHLyPjD3jDVwe2kwjkucMQcQuaWQe3ccUzzKGgLBXuEkDMAfn"; // <-- Replace with your bs58 secret key string
 const secretKey = bs58.decode(secretKeyBs58);
 
 const keypair = Keypair.fromSecretKey(secretKey);
@@ -15,7 +15,7 @@ const userPublicKey = keypair.publicKey;
 
 const inputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // USDT
 const outputMint = "So11111111111111111111111111111111111111112"; // SOL
-const amount = "1500000"; // 10_000_000 = 10 USDT (USDT has 6 decimals)
+const amount = "8600000"; // 10_000_000 = 10 USDT (USDT has 6 decimals)
 const slippageBps = 50; // 0.5% slippage
 
 const connection = new Connection(
