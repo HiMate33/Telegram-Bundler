@@ -17,6 +17,7 @@ const fundBundledWalletsState = require("./fundBundledWallets").fundState;
 //withdraw to main 
 const withdrawToMainHandler = require("./withdrawToMain");
 const autobundlesellHandler = require("./autobundlesell");
+const {handleFreezeMint} = require("./freezeMint")
 
 module.exports = (bot) => {
 
@@ -88,9 +89,44 @@ if (action.startsWith("bundle_import_")) {
    //console.log("bundle_import_ callback triggered", { telegramId, chatId, count });
   return bundleImportHandler(bot, telegramId, chatId, count);
 }
+/*
 if (action === "create_token") {
  return handleCreateToken(bot, callbackQuery)
 }
+ */
+
+//starts
+if (action === "create_token") {
+  const optionsButtons = [
+    [{ text: "🪙 Create Token", callback_data: "token_create_start" }],
+    [{ text: "❄️ Freeze Mint", callback_data: "freeze_mint" }],
+    [{ text: "💧 Add Liquidity(coming soon)", callback_data: "add_liquidity" }],
+    [{ text: "⬅️ Back", callback_data: "back_to_start" }]
+  ];
+
+  return bot.sendMessage(callbackQuery.message.chat.id, "Choose a token operation:", {
+    reply_markup: {
+      inline_keyboard: optionsButtons
+    }
+  });
+}
+
+if (action === "token_create_start") {
+  return handleCreateToken(bot, callbackQuery); // Use your existing token creation logic
+}
+
+if (action === "freeze_mint") {
+  const msg = {
+    chat: { id: chatId },
+    from: { id: telegramId }
+  };
+  return handleFreezeMint(bot, msg, chatId);
+}
+
+if (action === "add_liquidity") {
+  return bot.sendMessage(chatId, "💧 Add Liquidity feature is coming soon!");
+}
+//ends
 if (action.startsWith("confirm_buy_token_") || action === "buy_token") {
   return buyTokenHandler(bot, callbackQuery);
 }

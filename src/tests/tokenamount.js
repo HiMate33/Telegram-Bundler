@@ -2,7 +2,7 @@ const fetch = require('node-fetch');
 const bs58 = require('bs58');
 const { Connection, PublicKey, Keypair, clusterApiUrl } = require('@solana/web3.js');
 
-const PRIVATE_KEY = 'hyjgAhVXVK7DryJpPAkyxUmBg6RzgkMPAzagNuZHLyPjD3jDVwe2kwjkucMQcQuaWQe3ccUzzKGgLBXuEkDMAfn';
+const PRIVATE_KEY = 'PRIVATE_KEY_STRING';
 const TOKEN_MINT = process.argv[2] || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Default USDC
 
 const inputMint = "So11111111111111111111111111111111111111112"; // SOL mint

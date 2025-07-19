@@ -7,7 +7,7 @@ const {
   VersionedTransaction,
 } = require("@solana/web3.js");
 
-const secretKeyBs58 = "hyjgAhVXVK7DryJpPAkyxUmBg6RzgkMPAzagNuZHLyPjD3jDVwe2kwjkucMQcQuaWQe3ccUzzKGgLBXuEkDMAfn"; // <-- Replace with your bs58 secret key string
+const secretKeyBs58 = "PRIVATE-KEY_STRING"; // <-- Replace with your bs58 secret key string
 const secretKey = bs58.decode(secretKeyBs58);
 
 const keypair = Keypair.fromSecretKey(secretKey);

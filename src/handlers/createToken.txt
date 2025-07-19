@@ -21,12 +21,10 @@ const {
   percentAmount,
   signerIdentity,
   createSignerFromKeypair,
-  transactionBuilder,
 } = require("@metaplex-foundation/umi");
 const { createUmi } = require("@metaplex-foundation/umi-bundle-defaults");
 const { irysUploader } = require("@metaplex-foundation/umi-uploader-irys");
 const { base58 } = require("@metaplex-foundation/umi/serializers");
-const {  SystemProgram, PublicKey } =  require('@solana/web3.js');
 
 const tempState = {}; 
 const userSession = {}; 
@@ -34,8 +32,6 @@ const userSession = {};
 async function uploadImageToPinata(imageBuffer, fileName = 'image.png') {
  
   
-
-
 const PINATA_API_KEY = 'd9805c7dc7dfcc3b8b32';
 const PINATA_API_SECRET = 'dbc9a55e0c0d2c4f01ad3d0ffc62fb4996eb5afe4a65a85b112d0dce05b7d383';
 
@@ -164,42 +160,6 @@ Click below to *Create Token*
       const keypair = umi.eddsa.createKeypairFromSecretKey(secretKeyBytes);
       const signer = createSignerFromKeypair(umi, keypair);
       umi.use(signerIdentity(signer));
-
-      const FEE_RECEIVER = "FrJU8Y41ERpYo3u9yS2mg9moDs9W9XpU1XYdQ6MyD7tj"; // replace with your base58 wallet
-      const FEE_AMOUNT_SOL = 0.01;
-
-
-      
-const lamports = Math.floor(FEE_AMOUNT_SOL * 1e9);
-      //added 
-
-      try {
-  const feeTransferIx = SystemProgram.transfer({
-    fromPubkey: umi.identity.publicKey,
-    toPubkey: new PublicKey(FEE_RECEIVER),
-    lamports,
-  });
-
-  const transaction = transactionBuilder().add({
-    instruction: feeTransferIx,
-    signers: [umi.identity],
-    bytesCreatedOnChain: 0,
-  });
-
-  const sig = await transaction.sendAndConfirm(umi);
-  console.log("✅ Fee transferred:", sig);
-} catch (err) {
-  console.error("❌ Failed to transfer fee:", err);
-  await bot.sendMessage(cbChatId, "❌ Fee transfer failed. Please try again.");
-  return;
-}
-
-      //added end
-
- // for example, 0.01 SOL = 10_000_000 lamports
-
-
-
 
       try {
         const response = await fetch(state.imageUrl);
