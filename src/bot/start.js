@@ -94,6 +94,7 @@ Tap a button below to begin bundling your strategy!`;
       [{ text: "🌐 Set Newtork Provider (RPC)", callback_data: "bundled_network" }, { text: "👤 Account Info", callback_data: "account_info" }],
       [{ text: "🔁 Cross DEX Arbitrage (coming soon)", callback_data: "dex_arbitrage" }],
       [{ text: "🔗 Refferal and Earn", callback_data: "referral" }],
+       [{ text: "📬 Subscribe", callback_data: "subscribe" }] // 👈 New button added here
     ];
 
     bot.sendMessage(chatId, welcomeMsg, {

@@ -18,7 +18,6 @@ const withdrawToMainHandler = require("./withdrawToMain");
 const autobundlesellHandler = require("./autobundlesell");
 const {handleFreezeMint} = require("./freezeMint")
 const referralHandler = require("./referral");
-const subscribeHandler = require("./subscribe");
 
 module.exports = (bot) => {
 
@@ -33,28 +32,6 @@ module.exports = (bot) => {
     const chatId = callbackQuery.message.chat.id;
     const action = callbackQuery.data;
     const telegramId = callbackQuery.from.id;
-
-    const protectedActions = [
-  "copy_trading",
-  "dex_arbitrage",
-  "auto_bundle_buy",
-  "auto_bundle_sell",
-  "sniper"
-];
-
-// Check if the action is protected
-if (protectedActions.includes(action)) {
-  const user = await User.findOne({ telegram_id: telegramId });
-  if (!user || !user.subscribed) {
-    return bot.sendMessage(chatId, "🔒 This feature is only available to *subscribed users*.\n\nSubscribe to unlock all premium features.", {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [[{ text: "📬 Subscribe Now", callback_data: "subscribe" }]]
-      }
-    });
-  }
-}
-
 
     if (
       action === "main_wallet" ||
@@ -215,5 +192,4 @@ if (action.startsWith("confirm_buy_token_")) {
   });
 
  referralHandler(bot)
- subscribeHandler(bot);
 };

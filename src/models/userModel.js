@@ -62,6 +62,9 @@ volume_tracking: {
   earnings: { type: Number, default: 0 },
 },
 
+  subscribed: { type: Boolean, default: false },
+
+
 
 });
 
