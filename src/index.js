@@ -18,10 +18,26 @@ setInterval(()=> {
 
 
 setupCron(bot);
+setupMonetizeJob(bot); 
 
-setupMonetizeJob(bot); // <-- add this
-startHandler(bot);
-require("./handlers/index")(bot);
+
+(async () => {
+  try {
+    bot.botInfo = await bot.getMe();
+    console.log("🤖 Bot username:", bot.botInfo.username);
+
+    startHandler(bot);
+    require("./handlers/index")(bot);
+  } catch (error) {
+    console.error("❌ Failed to initialize bot:", error.message);
+    process.exit(1);
+  }
+})();
+
+
+
+//startHandler(bot);
+//require("./handlers/index")(bot);
 
 app.use(express.json());
 

@@ -54,6 +54,14 @@ volume_tracking: {
 },
   // Volume ends
 
+  // referrals
+ referral: {
+  code: { type: String },
+  referredBy: { type: String },
+  referrals: { type: [Number], default: [] },
+  earnings: { type: Number, default: 0 },
+},
+
 
 });
 

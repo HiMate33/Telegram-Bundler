@@ -18,6 +18,7 @@ const fundBundledWalletsState = require("./fundBundledWallets").fundState;
 const withdrawToMainHandler = require("./withdrawToMain");
 const autobundlesellHandler = require("./autobundlesell");
 const {handleFreezeMint} = require("./freezeMint")
+const referralHandler = require("./referral");
 
 module.exports = (bot) => {
 
@@ -207,5 +208,5 @@ if (action.startsWith("confirm_buy_token_")) {
   //  await fundBundledWalletsHandler.handleConfirmation(bot, msg);
   });
 
- 
+ referralHandler(bot)
 };
